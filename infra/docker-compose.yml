@@ -84,6 +84,9 @@ services:
     volumes:
       # Mount the named volume to persist data across restarts.
       - postgres-data:/var/lib/postgresql/data
+      # Postgres runs any .sql files in this folder automatically on first start.
+      # This is how we create the events table without manual migration steps.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   # ─── REDIS ────────────────────────────────────────────────────────────────
   # In-memory key-value store. We use it for idempotency: before publishing
