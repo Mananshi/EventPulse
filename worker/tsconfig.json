@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    // Compile to modern JS. Node 18+ supports ES2020 natively.
+    "target": "ES2020",
+
+    // CommonJS modules = require/module.exports. Matches "type":"commonjs" in package.json.
+    "module": "commonjs",
+
+    // Where compiled .js files go. `npm run build` outputs here.
+    "outDir": "dist",
+
+    // Root of source files. Keeps dist/ structure clean (no nested src/ folder).
+    "rootDir": "src",
+
+    // Strict mode: catches null errors, implicit any, and other common bugs at compile time.
+    "strict": true,
+
+    // Allow importing .json files directly (e.g. package.json metadata).
+    "resolveJsonModule": true,
+
+    // Allows ts-node and CommonJS interop with ES module packages.
+    "esModuleInterop": true,
+
+    // Skip type-checking of node_modules — speeds up compilation significantly.
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
