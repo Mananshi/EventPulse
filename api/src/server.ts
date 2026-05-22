@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { producer, connectProducer } from './kafka';
+import { redisClient } from './redis';
 
 const app = express();
 const PORT = 3000;
@@ -19,6 +20,14 @@ app.post('/events', async (req: Request, res: Response) => {
     if (!id || !type || !timestamp) {
         return res.status(400).json({ error: 'Missing required fields: id, type, timestamp' });
     }
+
+    const exists = await redisClient.exists(`event:${id}`);
+
+    if(exists) {
+        return res.status(409).json({ status: 'duplicate', id });
+    }
+
+    await redisClient.set(`event:${id}`, '1', 'EX', 3600);
 
     await producer.send({
         topic: 'ingest-events',
