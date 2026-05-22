@@ -76,7 +76,9 @@ services:
     networks:
       - eventpulse-net
     ports:
-      - "5432:5432"
+      # Mapped to 5433 on the host to avoid conflict with a local Postgres installation.
+      # Connect from your laptop using: psql -p 5433 -U eventpulse -d eventpulsedb
+      - "5433:5432"
     environment:
       POSTGRES_USER: eventpulse
       POSTGRES_PASSWORD: secret
