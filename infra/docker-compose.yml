@@ -1,0 +1,102 @@
+# A named network so every service can talk to each other by hostname.
+# E.g. the kafka service is reachable at "kafka:9092" from inside any container.
+networks:
+  eventpulse-net:
+    driver: bridge
+
+# Named volume so Postgres data survives container restarts.
+# Without this, every `docker-compose down` would wipe the database.
+volumes:
+  postgres-data:
+
+services:
+
+  # ─── ZOOKEEPER ────────────────────────────────────────────────────────────
+  # Kafka (pre-KRaft) requires Zookeeper to coordinate the broker cluster.
+  # It tracks: which brokers are alive, who is the leader for each partition,
+  # and stores topic/partition metadata. Think of it as Kafka's registry.
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    networks:
+      - eventpulse-net
+    environment:
+      # The port Kafka (and other clients) use to talk to Zookeeper.
+      ZOOKEEPER_CLIENT_PORT: 2181
+      # How often Zookeeper sends heartbeat ticks (in milliseconds).
+      ZOOKEEPER_TICK_TIME: 2000
+
+  # ─── KAFKA ────────────────────────────────────────────────────────────────
+  # The heart of EventPulse. Kafka is a distributed log — producers write
+  # messages into topics, consumers read from those topics independently.
+  # Kafka stores messages durably on disk so slow consumers don't lose data.
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    networks:
+      - eventpulse-net
+    depends_on:
+      - zookeeper  # Kafka must wait for Zookeeper to be ready first.
+    ports:
+      # Expose Kafka to your laptop (outside Docker) on port 9092.
+      # Format: "host_port:container_port"
+      - "9092:9092"
+    environment:
+      # Tell Kafka where Zookeeper lives. Uses the service name "zookeeper"
+      # as the hostname -- Docker's internal DNS resolves it automatically.
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # LISTENER CONFIGURATION -- this is the trickiest part of Kafka setup.
+      # Kafka needs two different addresses depending on who is connecting:
+      #   INTERNAL: used by other containers (worker, api) inside Docker
+      #   EXTERNAL: used by your laptop's CLI tools or local apps
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      # Brokers talk to each other using the INTERNAL listener.
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # With only 1 broker, replication factor must be 1.
+      # In production you'd have 3+ brokers and replication factor 3.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      # How long Kafka keeps messages before deleting them (7 days).
+      # This is what allows consumers to "replay" past events.
+      KAFKA_LOG_RETENTION_HOURS: 168
+
+  # ─── POSTGRESQL ───────────────────────────────────────────────────────────
+  # Relational database where the worker persists processed events permanently.
+  # Kafka is temporary storage (limited by retention); Postgres is the source
+  # of truth for long-term queries, analytics, and the dashboard's history.
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    networks:
+      - eventpulse-net
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: eventpulse
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: eventpulsedb
+    volumes:
+      # Mount the named volume to persist data across restarts.
+      - postgres-data:/var/lib/postgresql/data
+
+  # ─── REDIS ────────────────────────────────────────────────────────────────
+  # In-memory key-value store. We use it for idempotency: before publishing
+  # an event to Kafka, the API checks Redis to see if we've already seen
+  # this event ID. If yes, we reject the duplicate immediately (very fast).
+  # Redis is also used for pub/sub and caching in more advanced setups.
+  redis:
+    image: redis:7
+    container_name: redis
+    networks:
+      - eventpulse-net
+    ports:
+      - "6379:6379"
+    # --save "": disable RDB snapshots for dev (faster, no disk writes).
+    # --loglevel warning: reduce noise in logs.
+    command: redis-server --save "" --loglevel warning
