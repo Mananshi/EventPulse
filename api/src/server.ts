@@ -1,9 +1,11 @@
 import express, { Request, Response } from 'express';
 import { producer, connectProducer } from './kafka';
 import { redisClient } from './redis';
+import './ws';
+import { broadcastEvent } from './ws';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 8080;
 
 app.use(express.json());
 
@@ -29,15 +31,20 @@ app.post('/events', async (req: Request, res: Response) => {
 
     await redisClient.set(`event:${id}`, '1', 'EX', 3600);
 
+    const event = { id, type, timestamp, data };
+
     await producer.send({
         topic: 'ingest-events',
-        messages: [{ key: id, value: JSON.stringify({ id, type, timestamp, data }) }]
+        messages: [{ key: id, value: JSON.stringify(event) }]
     });
+
+    // Push to all connected dashboard clients immediately after Kafka publish.
+    broadcastEvent(event);
 
     return res.status(200).json({ status: 'queued', id });
 });
 
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
     return res.status(200).json({ status: 'ok' });
 });
 
