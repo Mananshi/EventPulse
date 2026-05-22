@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { producer, connectProducer } from './kafka';
 
 const app = express();
 const PORT = 3000;
@@ -12,20 +13,31 @@ interface Event {
     data: unknown;
 }
 
-app.post('/events', (req: Request, res: Response) => {
+app.post('/events', async (req: Request, res: Response) => {
     const { id, type, timestamp, data } = req.body as Event;
 
     if (!id || !type || !timestamp) {
         return res.status(400).json({ error: 'Missing required fields: id, type, timestamp' });
     }
 
-    return res.status(200).json({ status: 'received', id });
+    await producer.send({
+        topic: 'ingest-events',
+        messages: [{ key: id, value: JSON.stringify({ id, type, timestamp, data }) }]
+    });
+
+    return res.status(200).json({ status: 'queued', id });
 });
 
 app.get('/health', (req: Request, res: Response) => {
     return res.status(200).json({ status: 'ok' });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+
+async function start() {
+    await connectProducer();
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}
+
+start();
