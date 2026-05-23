@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon --exec ts-node src/worker.ts",
     "build": "tsc",
+    "start": "node dist/worker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
