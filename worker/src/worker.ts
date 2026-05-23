@@ -1,6 +1,8 @@
 import 'dotenv/config';
+import http from 'http';
 import { Kafka, EachMessagePayload, Producer } from 'kafkajs';
 import pool from './db';
+import { register, eventsProcessedTotal, dbInsertDuration } from './metrics';
 
 const kafka = new Kafka({
     clientId: 'eventpulse-worker',
@@ -23,6 +25,8 @@ async function start() {
             console.log('Received event:', event);
 
             try {
+                const endTimer = dbInsertDuration.startTimer();
+
                 // ON CONFLICT (id) DO NOTHING = idempotent write.
                 // If the consumer crashes mid-flight and replays a message,
                 // the duplicate insert is silently ignored instead of throwing.
@@ -32,6 +36,9 @@ async function start() {
                      ON CONFLICT (id) DO NOTHING`,
                     [event.id, event.type, event.timestamp, JSON.stringify(event.data)]
                 );
+
+                endTimer();
+                eventsProcessedTotal.inc({ status: 'success' });
                 console.log(`Persisted event ${event.id} to Postgres`);
             } catch (err) {
                 // Something went wrong (DB down, schema mismatch, etc.).
@@ -43,11 +50,28 @@ async function start() {
                     topic: 'ingest-dlq',
                     messages: [{ value: message.value }],
                 });
+                eventsProcessedTotal.inc({ status: 'dlq' });
             }
         },
     });
 
     console.log('Worker is running and consuming events...');
 }
+
+// The worker has no Express server, so we use Node's built-in http module
+// to expose a minimal /metrics endpoint for Prometheus to scrape.
+const metricsServer = http.createServer(async (req, res) => {
+    if (req.url === '/metrics') {
+        res.setHeader('Content-Type', register.contentType);
+        res.end(await register.metrics());
+    } else {
+        res.writeHead(404);
+        res.end();
+    }
+});
+
+metricsServer.listen(3002, () => {
+    console.log('Metrics server listening on port 3002');
+});
 
 start().catch(console.error);
