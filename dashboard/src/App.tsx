@@ -12,6 +12,8 @@ interface Event {
 function App() {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
+  const [totalEvents, setTotalEvents] = useState(0);
+  const [eventsByType, setEventsByType] = useState<Record<string, number>>({});
 
   useEffect(() => {
     // Open a persistent connection to the WebSocket server.
@@ -26,9 +28,14 @@ function App() {
       const msg = JSON.parse(messageEvent.data);
 
       if (msg.type === 'newEvent') {
-        // Prepend so the newest event is always at the top.
-        // Slice to 20 so the list doesn't grow unbounded.
-        setEvents((prev) => [msg.payload, ...prev].slice(0, 20));
+        const event: Event = msg.payload;
+
+        setEvents((prev) => [event, ...prev].slice(0, 20));
+        setTotalEvents((prev) => prev + 1);
+        setEventsByType((prev) => ({
+          ...prev,
+          [event.type]: (prev[event.type] ?? 0) + 1,
+        }));
       }
     };
 
@@ -46,7 +53,20 @@ function App() {
         </span>
       </p>
 
-      <h2>Live Events ({events.length})</h2>
+      <div className="counters">
+        <div className="counter-card">
+          <span className="counter-label">Total Events</span>
+          <span className="counter-value">{totalEvents}</span>
+        </div>
+        {Object.entries(eventsByType).map(([type, count]) => (
+          <div key={type} className="counter-card">
+            <span className="counter-label">{type}</span>
+            <span className="counter-value">{count}</span>
+          </div>
+        ))}
+      </div>
+
+      <h2>Live Events (last {events.length})</h2>
 
       {events.length === 0 ? (
         <p className="events-empty">Waiting for events...</p>
