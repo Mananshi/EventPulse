@@ -1,0 +1,24 @@
+global:
+  # How often Prometheus scrapes every target.
+  scrape_interval: 15s
+  # How long before a scrape is considered failed.
+  scrape_timeout: 10s
+
+scrape_configs:
+
+  # Scrape Prometheus itself -- useful for monitoring the monitor.
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API service running on your laptop (outside Docker).
+  # host.docker.internal resolves to the host machine's IP from inside a container.
+  # This is how Prometheus (in Docker) reaches the API (on your laptop).
+  - job_name: api
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+
+  # Worker service metrics endpoint.
+  - job_name: worker
+    static_configs:
+      - targets: ['host.docker.internal:3002']

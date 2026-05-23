@@ -8,6 +8,7 @@ networks:
 # Without this, every `docker-compose down` would wipe the database.
 volumes:
   postgres-data:
+  grafana-data:
 
 services:
 
@@ -105,3 +106,44 @@ services:
     # --save "": disable RDB snapshots for dev (faster, no disk writes).
     # --loglevel warning: reduce noise in logs.
     command: redis-server --save "" --loglevel warning
+
+  # ─── PROMETHEUS ───────────────────────────────────────────────────────────
+  # Scrapes /metrics from the api (8080) and worker (3002) every 15s.
+  # Stores everything as time-series data for querying and alerting.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    networks:
+      - eventpulse-net
+    ports:
+      - "9090:9090"
+    volumes:
+      # Mount our config so Prometheus knows which targets to scrape.
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    # Pass the config file path explicitly.
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    extra_hosts:
+      # Lets containers resolve "host.docker.internal" to the host machine.
+      # Required on Linux -- Mac Docker Desktop adds this automatically.
+      - "host.docker.internal:host-gateway"
+
+  # ─── GRAFANA ──────────────────────────────────────────────────────────────
+  # Visualization layer on top of Prometheus.
+  # Connect it to Prometheus as a data source, then build dashboards.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    networks:
+      - eventpulse-net
+    ports:
+      - "3030:3000"
+    volumes:
+      # Persist dashboards and data source config across restarts.
+      - grafana-data:/var/lib/grafana
+    environment:
+      # Default admin credentials -- change in production.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
