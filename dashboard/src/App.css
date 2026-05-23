@@ -1,0 +1,33 @@
+#app {
+  font-family: monospace;
+  padding: 24px;
+}
+
+.events-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.events-table th {
+  border: 1px solid #ccc;
+  padding: 8px 12px;
+  text-align: left;
+  background: #f5f5f5;
+}
+
+.events-table td {
+  border: 1px solid #ccc;
+  padding: 8px 12px;
+}
+
+.status-connected {
+  color: green;
+}
+
+.status-disconnected {
+  color: red;
+}
+
+.events-empty {
+  color: #888;
+}
