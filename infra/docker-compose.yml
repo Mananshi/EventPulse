@@ -107,6 +107,65 @@ services:
     # --loglevel warning: reduce noise in logs.
     command: redis-server --save "" --loglevel warning
 
+  # ─── API ──────────────────────────────────────────────────────────────────
+  # Ingestion HTTP server + WebSocket broadcaster.
+  # build.context points to the api/ folder relative to this docker-compose.yml.
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: api
+    networks:
+      - eventpulse-net
+    ports:
+      - "8080:8080"   # HTTP
+      - "3001:3001"   # WebSocket
+    env_file:
+      - ../api/.env
+    environment:
+      # Inside Docker, services talk to each other by service name.
+      # Override the localhost values from .env to use container hostnames.
+      KAFKA_BROKERS: kafka:29092
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - kafka
+      - redis
+
+  # ─── WORKER ───────────────────────────────────────────────────────────────
+  # Kafka consumer that persists events to Postgres.
+  worker:
+    build:
+      context: ../worker
+      dockerfile: Dockerfile
+    container_name: worker
+    networks:
+      - eventpulse-net
+    ports:
+      - "3002:3002"   # Prometheus metrics
+    env_file:
+      - ../worker/.env
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      PG_HOST: postgres
+      PG_PORT: 5432   # inside Docker, postgres is on its native port
+    depends_on:
+      - kafka
+      - postgres
+
+  # ─── DASHBOARD ────────────────────────────────────────────────────────────
+  # React app served by Nginx. Nginx also proxies /api and /ws to the api container.
+  dashboard:
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
+    container_name: dashboard
+    networks:
+      - eventpulse-net
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
   # ─── PROMETHEUS ───────────────────────────────────────────────────────────
   # Scrapes /metrics from the api (8080) and worker (3002) every 15s.
   # Stores everything as time-series data for querying and alerting.
